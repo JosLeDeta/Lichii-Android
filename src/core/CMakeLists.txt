@@ -1197,6 +1197,12 @@ add_library(core STATIC
     tools/renderdoc.cpp
     tools/renderdoc.h)
 
+# The Windows NDK r28 Clang optimizer crashes on this parser at -O2.
+if (ANDROID AND CMAKE_HOST_WIN32 AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20)
+    set_property(SOURCE hle/service/bcat/news/msgpack.cpp APPEND PROPERTY COMPILE_OPTIONS -O1)
+endif()
+
 if (ENABLE_WIFI_SCAN)
     target_sources(core PRIVATE internal_network/wifi_scanner.cpp)
     if (LINUX)

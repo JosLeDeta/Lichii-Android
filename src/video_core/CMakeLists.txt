@@ -328,6 +328,13 @@ add_library(video_core STATIC
     video_core.h
 )
 
+# The Windows NDK r28 Clang crashes in the AArch64 machine scheduler for SetupTables.
+if (ANDROID AND CMAKE_HOST_WIN32 AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20)
+    set_property(SOURCE renderer_vulkan/vk_state_tracker.cpp APPEND PROPERTY
+                 COMPILE_OPTIONS -mllvm -enable-misched=false)
+endif()
+
 if (ENABLE_LSFG)
     target_sources(video_core PRIVATE
         frame_gen/lossless_dll.cpp
