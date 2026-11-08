@@ -6,10 +6,9 @@ Tested on a Samsung Galaxy S26 (Exynos 2600, Xclipse 960, 12 GB, Android 17) wit
 
 - **The Legend of Zelda: Ocarina of Time**
   - The latest game update boots. It stopped at a black screen while opening a microphone stream. Lichii for Android now tells games there is no microphone, as before.
-  - Pre-rendered cutscenes run at about **15 FPS at 1x** resolution, up from about 8. The game's movie network is replaced by a plain copy of the frame.
   - Cutscene audio stays in sync with the video.
   - Fewer graphical issues: fixes for white flashes from stale occlusion counts, the red line in the tomb, Hyrule Field grass, and flickering water.
-  - Built-in FPS Unlock: the game logic keeps real speed from 10 FPS up.
+  - Built-in FPS Unlock: the game logic keeps real speed when the frame rate changes.
 - **Memory**
   - **New per-game setting "Limit memory during scene loads"** (Advanced graphics, Auto / Off / On). 0.3.0 applied this limit to every game, which slowed down games that load textures all the time. Auto now applies it to Ocarina of Time only.
   - **GPU memory follows the phone's real RAM.** Some drivers report a 32 GB GPU heap on a 12 GB phone. The GPU now gets at most a third of the RAM, and the texture cache gives memory back when Android runs low. This should mean fewer games closed for low memory.
