@@ -63,12 +63,13 @@ VkFormat GetFormat(const Tegra::FramebufferConfig& framebuffer) {
 
 } // Anonymous namespace
 
-Layer::Layer(const Device& device, MemoryAllocator& memory_allocator_, Scheduler& scheduler_, Tegra::MaxwellDeviceMemoryManager& device_memory_, size_t image_count_, VkExtent2D output_size, VkDescriptorSetLayout layout, const PresentFilters& filters_)
+Layer::Layer(const Device& device, MemoryAllocator& memory_allocator_, Scheduler& scheduler_, Tegra::MaxwellDeviceMemoryManager& device_memory_, size_t image_count_, VkExtent2D output_size, VkDescriptorSetLayout layout, const PresentFilters& filters_, bool stereo_)
     : memory_allocator(memory_allocator_)
     , scheduler(scheduler_)
     , device_memory(device_memory_)
     , filters(filters_)
     , image_count(image_count_)
+    , stereo(stereo_)
 {
     CreateDescriptorPool(device);
     CreateDescriptorSets(device, layout);
@@ -87,21 +88,22 @@ Layer::~Layer() {
     ReleaseRawImages();
 }
 
-void Layer::ConfigureDraw(const Device& device, PresentPushConstants* out_push_constants,
-                          VkDescriptorSet* out_descriptor_set, RasterizerVulkan& rasterizer,
-                          VkSampler sampler, size_t image_index,
-                          const Tegra::FramebufferConfig& framebuffer,
-                          const Layout::FramebufferLayout& layout) {
+u32 Layer::ConfigureDraw(const Device& device, PresentPushConstants* out_push_constants,
+                         VkDescriptorSet* out_descriptor_set, RasterizerVulkan& rasterizer,
+                         VkSampler sampler, VkSampler depth_sampler, size_t image_index,
+                         const Tegra::FramebufferConfig& framebuffer,
+                         const Layout::FramebufferLayout& layout) {
+    const bool is_applet =
+        (framebuffer.layer_stack_mask & Service::Nvnflinger::LayerStackBit(
+                                            Service::Nvnflinger::LayerStackId::Recording)) == 0;
     const auto texture_info = rasterizer.AccelerateDisplay(
-        framebuffer, framebuffer.address + framebuffer.offset, framebuffer.stride);
+        framebuffer, framebuffer.address + framebuffer.offset, framebuffer.stride,
+        stereo && !is_applet);
     const u32 texture_width = texture_info ? texture_info->width : framebuffer.width;
     const u32 texture_height = texture_info ? texture_info->height : framebuffer.height;
     const u32 scaled_width = texture_info ? texture_info->scaled_width : texture_width;
     const u32 scaled_height = texture_info ? texture_info->scaled_height : texture_height;
     const bool use_accelerated = texture_info.has_value();
-    const bool is_applet =
-        (framebuffer.layer_stack_mask & Service::Nvnflinger::LayerStackBit(
-                                            Service::Nvnflinger::LayerStackId::Recording)) == 0;
 
     RefreshResources(device, framebuffer);
     SetAntiAliasPass(device);
@@ -167,12 +169,16 @@ void Layer::ConfigureDraw(const Device& device, PresentPushConstants* out_push_c
     SetMatrixData(device, *out_push_constants, layout);
     SetVertexData(device, *out_push_constants, layout, crop_rect);
 
-    UpdateDescriptorSet(device, source_image_view, sampler, image_index);
+    const VkImageView depth_view =
+        stereo && !is_applet && texture_info ? texture_info->stereo_depth_view : VK_NULL_HANDLE;
+    UpdateDescriptorSet(device, source_image_view, sampler, depth_view, depth_sampler, image_index);
     *out_descriptor_set = descriptor_sets[image_index];
+    return depth_view ? (texture_info->stereo_reversed_depth ? 3 : 1) : 0;
 }
 
 void Layer::CreateDescriptorPool(const Device& device) {
-    descriptor_pool = CreateWrappedDescriptorPool(device, image_count, image_count);
+    descriptor_pool = CreateWrappedDescriptorPool(device, image_count * (stereo ? 2 : 1),
+                                                  image_count);
 }
 
 void Layer::CreateDescriptorSets(const Device& device, VkDescriptorSetLayout layout) {
@@ -325,7 +331,8 @@ void Layer::SetVertexData(const Device& device, PresentPushConstants& data, cons
     data.vertices[3] = ScreenRectVertex(x + w, y + h, crop.right, crop.bottom);
 }
 
-void Layer::UpdateDescriptorSet(const Device& device, VkImageView image_view, VkSampler sampler, size_t image_index) {
+void Layer::UpdateDescriptorSet(const Device& device, VkImageView image_view, VkSampler sampler,
+                                VkImageView depth_view, VkSampler depth_sampler, size_t image_index) {
     const VkDescriptorImageInfo image_info{
         .sampler = sampler,
         .imageView = image_view,
@@ -345,7 +352,19 @@ void Layer::UpdateDescriptorSet(const Device& device, VkImageView image_view, Vk
         .pTexelBufferView = nullptr,
     };
 
-    device.GetLogical().UpdateDescriptorSets(std::array{sampler_write}, {});
+    if (!stereo) {
+        device.GetLogical().UpdateDescriptorSets(std::array{sampler_write}, {});
+        return;
+    }
+    const VkDescriptorImageInfo depth_info{
+        .sampler = depth_sampler,
+        .imageView = depth_view ? depth_view : image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+    };
+    auto depth_write = sampler_write;
+    depth_write.dstBinding = 1;
+    depth_write.pImageInfo = &depth_info;
+    device.GetLogical().UpdateDescriptorSets(std::array{sampler_write, depth_write}, {});
 }
 
 void Layer::UpdateRawImage(const Tegra::FramebufferConfig& framebuffer, size_t image_index) {

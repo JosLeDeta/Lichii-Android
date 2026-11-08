@@ -52,9 +52,13 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.fragment.navArgs
+import androidx.preference.PreferenceManager
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import androidx.window.layout.WindowLayoutInfo
+import metavr.view.SurfaceControlExt
+import metavr.view.SurfaceViewExt
+import metavrx.os.MetaVrOsSdkVersion
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -109,6 +113,8 @@ import kotlin.or
 
 class EmulationFragment : Fragment(), SurfaceHolder.Callback {
     private lateinit var emulationState: EmulationState
+    private val supportsStereoWindow by lazy { MetaVrOsSdkVersion.isAtOrAbove(207) }
+    private var stereoWindow = false
     private var emulationActivity: EmulationActivity? = null
 
     private var perfStatsUpdater: (() -> Unit)? = null
@@ -362,7 +368,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             Log.warning("[EmulationFragment] Failed to load Freedreno config: ${e.message}")
         }
 
-        emulationState = EmulationState(game!!.path) {
+        emulationState = EmulationState(game!!.path, { stereoWindow }) {
             return@EmulationState driverViewModel.isInteractionAllowed.value &&
                 !isStoppingForRomSwap
         }
@@ -617,6 +623,26 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        val preferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val stereoRequested = preferences.getBoolean(PREF_STEREO_WINDOW, false)
+        stereoWindow = supportsStereoWindow &&
+            (savedInstanceState?.getBoolean(STATE_STEREO_WINDOW) ?: stereoRequested)
+        if (stereoWindow) {
+            try {
+                SurfaceViewExt.setStereoComposition(
+                    binding.surfaceEmulation, SurfaceControlExt.STEREO_COMPOSITION_SIDE_BY_SIDE
+                )
+            } catch (exception: RuntimeException) {
+                stereoWindow = false
+                Log.warning("Stereo window unavailable: ${exception.message}")
+                Toast.makeText(requireContext(), R.string.stereo_window_unavailable, Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
+        binding.inGameMenu.menu.findItem(R.id.menu_stereo_window).apply {
+            isVisible = supportsStereoWindow
+            isChecked = stereoRequested
+        }
         if (requireActivity().isFinishing) {
             return
         }
@@ -781,6 +807,14 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                     toggleOverlay(newState)
                     updateQuickOverlayMenuEntry(BooleanSetting.SHOW_INPUT_OVERLAY.getBoolean())
                     NativeConfig.saveGlobalConfig()
+                    true
+                }
+
+                R.id.menu_stereo_window -> {
+                    it.isChecked = !it.isChecked
+                    PreferenceManager.getDefaultSharedPreferences(requireContext()).edit()
+                        .putBoolean(PREF_STEREO_WINDOW, it.isChecked).apply()
+                    Toast.makeText(requireContext(), R.string.stereo_window_restart, Toast.LENGTH_SHORT).show()
                     true
                 }
 
@@ -2274,8 +2308,14 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_STEREO_WINDOW, stereoWindow)
+    }
+
     private class EmulationState(
         private val gamePath: String,
+        private val isStereoWindow: () -> Boolean,
         private val emulationCanStart: () -> Boolean
     ) {
         private var state: State
@@ -2366,9 +2406,10 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         @Synchronized
         fun changeProgram(programIndex: Int) {
             emulationThread.join()
+            val stereo = isStereoWindow()
             emulationThread = Thread({
                 Log.debug("[EmulationFragment] Starting emulation thread.")
-                NativeLibrary.run(gamePath, programIndex, false)
+                NativeLibrary.run(gamePath, programIndex, false, stereo)
             }, "NativeEmulation")
             emulationThread.start()
         }
@@ -2433,9 +2474,10 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             when (state) {
                 State.STOPPED -> {
                     NativeLibrary.surfaceChanged(currentSurface)
+                    val stereo = isStereoWindow()
                     emulationThread = Thread({
                         Log.debug("[EmulationFragment] Starting emulation thread.")
-                        NativeLibrary.run(gamePath, programIndex, true)
+                        NativeLibrary.run(gamePath, programIndex, true, stereo)
                     }, "NativeEmulation")
                     emulationThread.start()
                     state = State.RUNNING
@@ -2483,6 +2525,8 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
     }
 
     companion object {
+        private const val PREF_STEREO_WINDOW = "quest_stereo_window"
+        private const val STATE_STEREO_WINDOW = "active_quest_stereo_window"
         // Debug launches over adb: am start -n <package>/org.yuzu.yuzu_emu.activities.EmulationActivity
         // --es exefs_path /sdcard/<game folder>
         const val EXTRA_EXEFS_PATH = "exefs_path"

@@ -331,6 +331,8 @@ play {
 }
 
 dependencies {
+    compileOnly("com.meta.metavr:metavr-os-jsdk:207")
+    implementation("com.meta.metavrx.util:util:1.0.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")

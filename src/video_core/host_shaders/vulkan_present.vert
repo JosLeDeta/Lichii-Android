@@ -4,6 +4,7 @@
 #version 460 core
 
 layout (location = 0) out vec2 frag_tex_coord;
+layout (location = 1) flat out int stereo_view;
 
 struct ScreenRectVertex {
     vec2 position;
@@ -34,4 +35,5 @@ void main() {
     ScreenRectVertex vertex = GetVertex(gl_VertexIndex);
     gl_Position = modelview_matrix * vec4(vertex.position, 0.0, 1.0);
     frag_tex_coord = vertex.tex_coord;
+    stereo_view = gl_InstanceIndex;
 }

@@ -19,12 +19,13 @@
 
 namespace Vulkan {
 
-BlitScreen::BlitScreen(Tegra::MaxwellDeviceMemoryManager& device_memory_, const Device& device_, MemoryAllocator& memory_allocator_, PresentManager& present_manager_, Scheduler& scheduler_, const PresentFilters& filters_)
+BlitScreen::BlitScreen(Tegra::MaxwellDeviceMemoryManager& device_memory_, const Device& device_, MemoryAllocator& memory_allocator_, PresentManager& present_manager_, Scheduler& scheduler_, const PresentFilters& filters_, bool stereo_)
     : device_memory{device_memory_}
     , memory_allocator{memory_allocator_}
     , present_manager{present_manager_}
     , scheduler{scheduler_}
     , filters{filters_}
+    , stereo{stereo_}
     , image_count{1}
     , image_index{0}
     , swapchain_view_format{VK_FORMAT_B8G8R8A8_UNORM}
@@ -41,6 +42,11 @@ void BlitScreen::WaitIdle(const Device& device) {
 void BlitScreen::SetWindowAdaptPass(const Device& device) {
     layers.clear();
     scaling_filter = filters.get_scaling_filter();
+
+    if (stereo) {
+        window_adapt = MakeStereoWindow(device, swapchain_view_format);
+        return;
+    }
 
     switch (scaling_filter) {
     case Settings::ScalingFilter::NearestNeighbor:
@@ -152,7 +158,7 @@ void BlitScreen::DrawToFrame(const Device& device, RasterizerVulkan& rasterizer,
         layers.clear();
         for (size_t i = 0; i < framebuffers.size(); ++i) {
             layers.emplace_back(device, memory_allocator, scheduler, device_memory, image_count,
-                                window_size, window_adapt->GetDescriptorSetLayout(), filters);
+                                window_size, window_adapt->GetDescriptorSetLayout(), filters, stereo);
         }
     }
 

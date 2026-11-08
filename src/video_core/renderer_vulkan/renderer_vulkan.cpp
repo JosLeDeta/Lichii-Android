@@ -169,7 +169,9 @@ try
                    memory_allocator,
                    present_manager,
                    scheduler,
-                   PresentFiltersForDisplay)
+                   render_window.GetWindowInfo().stereo_side_by_side
+                       ? PresentFiltersForAppletCapture : PresentFiltersForDisplay,
+                   render_window.GetWindowInfo().stereo_side_by_side)
     , blit_capture(device_memory,
                    device,
                    memory_allocator,

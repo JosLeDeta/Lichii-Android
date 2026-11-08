@@ -36,7 +36,8 @@ class EmuWindow_Android final : public Core::Frontend::EmuWindow {
 
 public:
     EmuWindow_Android(ANativeWindow* surface,
-                      std::shared_ptr<Common::DynamicLibrary> driver_library);
+                      std::shared_ptr<Common::DynamicLibrary> driver_library,
+                      bool stereo = false);
 
     ~EmuWindow_Android() = default;
 

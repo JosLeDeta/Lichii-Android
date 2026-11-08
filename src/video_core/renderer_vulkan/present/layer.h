@@ -53,14 +53,14 @@ public:
     explicit Layer(const Device& device, MemoryAllocator& memory_allocator, Scheduler& scheduler,
                    Tegra::MaxwellDeviceMemoryManager& device_memory, size_t image_count,
                    VkExtent2D output_size, VkDescriptorSetLayout layout,
-                   const PresentFilters& filters);
+                   const PresentFilters& filters, bool stereo = false);
     ~Layer();
 
-    void ConfigureDraw(const Device& device, PresentPushConstants* out_push_constants,
-                       VkDescriptorSet* out_descriptor_set, RasterizerVulkan& rasterizer,
-                       VkSampler sampler, size_t image_index,
-                       const Tegra::FramebufferConfig& framebuffer,
-                       const Layout::FramebufferLayout& layout);
+    u32 ConfigureDraw(const Device& device, PresentPushConstants* out_push_constants,
+                      VkDescriptorSet* out_descriptor_set, RasterizerVulkan& rasterizer,
+                      VkSampler sampler, VkSampler depth_sampler, size_t image_index,
+                      const Tegra::FramebufferConfig& framebuffer,
+                      const Layout::FramebufferLayout& layout);
 
 private:
     void CreateDescriptorPool(const Device& device);
@@ -80,7 +80,8 @@ private:
 
     void SetMatrixData(const Device& device, PresentPushConstants& data, const Layout::FramebufferLayout& layout) const;
     void SetVertexData(const Device& device, PresentPushConstants& data, const Layout::FramebufferLayout& layout, const Common::Rectangle<f32>& crop) const;
-    void UpdateDescriptorSet(const Device& device, VkImageView image_view, VkSampler sampler, size_t image_index);
+    void UpdateDescriptorSet(const Device& device, VkImageView image_view, VkSampler sampler,
+                             VkImageView depth_view, VkSampler depth_sampler, size_t image_index);
     void UpdateRawImage(const Tegra::FramebufferConfig& framebuffer, size_t image_index);
 
 private:
@@ -89,6 +90,7 @@ private:
     Tegra::MaxwellDeviceMemoryManager& device_memory;
     const PresentFilters& filters;
     const size_t image_count{};
+    const bool stereo;
     vk::DescriptorPool descriptor_pool{};
     vk::DescriptorSets descriptor_sets{};
 

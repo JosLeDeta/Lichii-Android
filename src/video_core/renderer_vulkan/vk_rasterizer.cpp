@@ -60,6 +60,7 @@
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_query_cache.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
+#include "core/frontend/emu_window.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_staging_buffer_pool.h"
 #include "video_core/renderer_vulkan/vk_state_tracker.h"
@@ -417,7 +418,8 @@ RasterizerVulkan::RasterizerVulkan(Core::Frontend::EmuWindow& emu_window_, Tegra
                      gpu.ShaderNotify()),
       accelerate_dma(buffer_cache, texture_cache, scheduler),
       fence_manager(*this, gpu, texture_cache, buffer_cache, query_cache, device, scheduler),
-      frame_dump(device, memory_allocator, scheduler) {
+      frame_dump(device, memory_allocator, scheduler),
+      stereo_window(emu_window_.GetWindowInfo().stereo_side_by_side) {
     scheduler.SetQueryCache(query_cache);
     buffer_cache.SetPendingCpuWrites(
         [this](const std::function<void(DAddr, size_t)>& callback) {
@@ -788,6 +790,10 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
     TrackOcarinaCamera();
     TrackOcarinaActor(pipeline->ShaderHashes()[1], is_indexed, is_indirect);
 #endif
+    if (stereo_window) {
+        RecordStereoDepth();
+    }
+
     TracePendingCpuWrites(false, pipeline->ShaderHashes());
     TraceRenderState(is_indexed, "configured", texture_cache.GetFramebuffer());
     if (frame_dump.Capturing()) {
@@ -2902,6 +2908,7 @@ void RasterizerVulkan::TickFrame() {
     staging_pool.TickFrame();
     {
         std::scoped_lock lock{texture_cache.mutex};
+        stereo_depth_targets.clear();
         texture_cache.TickFrame();
     }
     {
@@ -3011,8 +3018,43 @@ void RasterizerVulkan::AccelerateInlineToMemory(GPUVAddr address, size_t copy_si
     pipeline_cache.InvalidateRegion(*cpu_addr, copy_size);
 }
 
+void RasterizerVulkan::RecordStereoDepth() {
+    const auto& targets = texture_cache.GetRenderTargets();
+    if (!targets.depth_buffer_id || !maxwell3d->regs.depth_test_enable ||
+        !maxwell3d->regs.depth_write_enabled) {
+        return;
+    }
+
+    auto& depth = texture_cache.GetImageView(targets.depth_buffer_id);
+    if (depth.type != VideoCommon::ImageViewType::e2D ||
+        depth.Samples() != VK_SAMPLE_COUNT_1_BIT) {
+        return;
+    }
+
+    using Op = Maxwell::ComparisonOp;
+    const auto op = maxwell3d->regs.depth_test_func;
+    const bool reversed = op == Op::Greater_D3D || op == Op::GreaterEqual_D3D ||
+                          op == Op::Greater_GL || op == Op::GreaterEqual_GL;
+    const bool forward = op == Op::Less_D3D || op == Op::LessEqual_D3D ||
+                         op == Op::Less_GL || op == Op::LessEqual_GL;
+    if (!forward && !reversed) {
+        return;
+    }
+    for (const auto id : targets.color_buffer_ids) {
+        if (id) {
+            const auto& color = texture_cache.GetImageView(id);
+            if (color.size.width == depth.size.width && color.size.height == depth.size.height &&
+                color.range.base.level == 0 && color.range.base.layer == 0) {
+                stereo_depth_targets.insert_or_assign(
+                    color.ImageHandle(), StereoDepth{targets.depth_buffer_id, depth.ImageHandle(),
+                                                     reversed});
+            }
+        }
+    }
+}
+
 std::optional<FramebufferTextureInfo> RasterizerVulkan::AccelerateDisplay(
-    const Tegra::FramebufferConfig& config, DAddr framebuffer_addr, u32 pixel_stride) {
+    const Tegra::FramebufferConfig& config, DAddr framebuffer_addr, u32 pixel_stride, bool stereo) {
     if (!framebuffer_addr) {
         return {};
     }
@@ -3065,6 +3107,44 @@ std::optional<FramebufferTextureInfo> RasterizerVulkan::AccelerateDisplay(
         }
     }
 #endif
+    if (stereo && image_view->range.base.level == 0 && image_view->range.base.layer == 0) {
+        const auto get_depth = [&](const StereoDepth& candidate) -> ImageView* {
+            auto* view = texture_cache.TryGetImageView(candidate.view_id);
+            return view && view->ImageHandle() == candidate.image &&
+                           view->size.width == info.width && view->size.height == info.height
+                       ? view : nullptr;
+        };
+        ImageView* depth = nullptr;
+        bool reversed = false;
+        if (const auto it = stereo_depth_targets.find(info.image);
+            it != stereo_depth_targets.end()) {
+            depth = get_depth(it->second);
+            reversed = it->second.reversed;
+        }
+        if (!depth) {
+            // A color-only post-process can change the presented image. Reuse scene depth only
+            // when all matching draws in this frame agree on the depth view and convention.
+            for (const auto& [color, candidate] : stereo_depth_targets) {
+                auto* view = get_depth(candidate);
+                if (view) {
+                    if (depth && (view != depth || reversed != candidate.reversed)) {
+                        depth = nullptr;
+                        break;
+                    }
+                    depth = view;
+                    reversed = candidate.reversed;
+                }
+            }
+        }
+        if (depth) {
+            info.stereo_depth_view = depth->DepthView();
+            info.stereo_reversed_depth = reversed;
+            if (info.stereo_depth_view && !std::exchange(stereo_depth_reported, true)) {
+                LOG_INFO(Render_Vulkan, "Stereo window: matched {}x{} scene depth",
+                         info.width, info.height);
+            }
+        }
+    }
     return info;
 }
 

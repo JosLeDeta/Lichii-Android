@@ -917,6 +917,9 @@
     <string name="emulation_dpad_slide">Deslizamiento de la cruceta</string>
     <string name="emulation_haptics">Toques hápticos</string>
     <string name="emulation_show_overlay">Mostrar mando</string>
+    <string name="stereo_window">Ventana 3D (experimental)</string>
+    <string name="stereo_window_restart">Cierra y vuelve a abrir el juego para aplicar el ajuste de ventana 3D.</string>
+    <string name="stereo_window_unavailable">La ventana 3D no está disponible. Se usará la ventana 2D.</string>
     <string name="emulation_hide_overlay">Ocultar mando</string>
     <string name="emulation_toggle_all">Alternar todo</string>
     <string name="emulation_control_adjust">Ajustar superposición</string>

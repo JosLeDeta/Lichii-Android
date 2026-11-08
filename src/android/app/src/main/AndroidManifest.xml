@@ -12,7 +12,10 @@ SPDX-FileCopyrightText: Eden Emulator Project
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:metavr="http://schemas.meta.com/metavr-sdk"
+    xmlns:tools="http://schemas.android.com/tools">
+    <metavr:uses-metavr-sdk metavr:minSdkVersion="1" metavr:targetSdkVersion="207" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />

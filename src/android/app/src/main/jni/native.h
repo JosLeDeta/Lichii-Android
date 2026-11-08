@@ -56,7 +56,7 @@ public:
     void SetAppletId(int applet_id);
     Core::SystemResultStatus InitializeEmulation(const std::string& filepath,
                                                  const std::size_t program_index,
-                                                 const bool frontend_initiated);
+                                                 const bool frontend_initiated, bool stereo);
 
     Common::Android::SoftwareKeyboard::AndroidKeyboard* SoftwareKeyboard();
 

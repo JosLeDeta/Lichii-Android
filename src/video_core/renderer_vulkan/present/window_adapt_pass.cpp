@@ -18,10 +18,13 @@
 
 namespace Vulkan {
 
-WindowAdaptPass::WindowAdaptPass(const Device& device, VkFormat frame_format, vk::Sampler&& sampler_, vk::ShaderModule&& fragment_shader_)
+WindowAdaptPass::WindowAdaptPass(const Device& device, VkFormat frame_format, vk::Sampler&& sampler_, vk::ShaderModule&& fragment_shader_, bool stereo)
     : sampler(std::move(sampler_))
     , fragment_shader(std::move(fragment_shader_))
 {
+    if (stereo) {
+        depth_sampler = CreateWrappedSampler(device, VK_FILTER_NEAREST);
+    }
     CreateDescriptorSetLayout(device);
     CreatePipelineLayout(device);
     CreateVertexShader(device);
@@ -45,9 +48,13 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
     };
 
     const size_t layer_count = configs.size();
+    const bool stereo = static_cast<bool>(depth_sampler);
+    const auto eye_layout =
+        stereo ? Layout::DefaultFrameLayout(layout.width / 2, layout.height) : layout;
     std::vector<PresentPushConstants> push_constants(layer_count);
     std::vector<VkDescriptorSet> descriptor_sets(layer_count);
     std::vector<VkPipeline> graphics_pipelines(layer_count);
+    std::vector<u32> stereo_views(stereo ? layer_count : 0);
 
     auto layer_it = layers.begin();
     for (size_t i = 0; i < layer_count; i++) {
@@ -64,8 +71,12 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
             break;
         }
 
-        layer_it->ConfigureDraw(device, &push_constants[i], &descriptor_sets[i], rasterizer, *sampler,
-                                image_index, configs[i], layout);
+        const auto stereo_view = layer_it->ConfigureDraw(
+            device, &push_constants[i], &descriptor_sets[i], rasterizer, *sampler,
+            stereo ? *depth_sampler : VK_NULL_HANDLE, image_index, configs[i], eye_layout);
+        if (stereo) {
+            stereo_views[i] = stereo_view;
+        }
         layer_it++;
     }
 
@@ -94,13 +105,24 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
         BeginRenderPass(cmdbuf, renderpass, host_framebuffer, render_area);
         cmdbuf.ClearAttachments({clear_attachment}, {clear_rect});
 
-        for (size_t i = 0; i < layer_count; i++) {
-            cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[i]);
-            cmdbuf.PushConstants(graphics_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
-                                 push_constants[i]);
-            cmdbuf.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, 0,
-                                      descriptor_sets[i], {});
-            cmdbuf.Draw(4, 1, 0, 0);
+        for (u32 eye = 0; eye < (stereo ? 2U : 1U); ++eye) {
+            if (stereo) {
+                const u32 x = eye * eye_layout.width;
+                cmdbuf.SetViewport(0, VkViewport{
+                    static_cast<f32>(x), 0.0f, static_cast<f32>(eye_layout.width),
+                    static_cast<f32>(eye_layout.height), 0.0f, 1.0f});
+                cmdbuf.SetScissor(0, VkRect2D{
+                    {static_cast<s32>(x), 0}, {eye_layout.width, eye_layout.height}});
+            }
+            for (size_t i = 0; i < layer_count; i++) {
+                cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[i]);
+                cmdbuf.PushConstants(graphics_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
+                                     push_constants[i]);
+                cmdbuf.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                          graphics_pipeline_layout, 0, descriptor_sets[i], {});
+                const u32 view = stereo && stereo_views[i] != 0 ? stereo_views[i] + eye : 0;
+                cmdbuf.Draw(4, 1, 0, view);
+            }
         }
 
         cmdbuf.EndRenderPass();
@@ -116,8 +138,14 @@ VkRenderPass WindowAdaptPass::GetRenderPass() {
 }
 
 void WindowAdaptPass::CreateDescriptorSetLayout(const Device& device) {
-    descriptor_set_layout =
-        CreateWrappedDescriptorSetLayout(device, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+    if (depth_sampler) {
+        descriptor_set_layout = CreateWrappedDescriptorSetLayout(
+            device, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+    } else {
+        descriptor_set_layout =
+            CreateWrappedDescriptorSetLayout(device, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER});
+    }
 }
 
 void WindowAdaptPass::CreatePipelineLayout(const Device& device) {

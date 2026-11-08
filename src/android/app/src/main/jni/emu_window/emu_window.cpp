@@ -254,7 +254,8 @@ void EmuWindow_Android::UpdateFrameRateHint() {
 }
 
 EmuWindow_Android::EmuWindow_Android(ANativeWindow* surface,
-                                     std::shared_ptr<Common::DynamicLibrary> driver_library)
+                                     std::shared_ptr<Common::DynamicLibrary> driver_library,
+                                     bool stereo)
     : m_driver_library{driver_library} {
     LOG_INFO(Frontend, "initializing");
 
@@ -263,6 +264,10 @@ EmuWindow_Android::EmuWindow_Android(ANativeWindow* surface,
         return;
     }
 
+    window_info.stereo_side_by_side = stereo;
     OnSurfaceChanged(surface);
+    if (stereo) {
+        LOG_INFO(Frontend, "Stereo window surface: {}x{}", m_window_width, m_window_height);
+    }
     window_info.type = Core::Frontend::WindowSystemType::Android;
 }

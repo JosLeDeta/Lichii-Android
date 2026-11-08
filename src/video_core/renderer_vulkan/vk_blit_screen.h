@@ -48,13 +48,15 @@ struct FramebufferTextureInfo {
     u32 scaled_height{};
     bool already_upscaled{};
     bool anti_aliased{};
+    VkImageView stereo_depth_view{};
+    bool stereo_reversed_depth{};
 };
 
 class BlitScreen {
 public:
     explicit BlitScreen(Tegra::MaxwellDeviceMemoryManager& device_memory, const Device& device,
                         MemoryAllocator& memory_allocator, PresentManager& present_manager,
-                        Scheduler& scheduler, const PresentFilters& filters);
+                        Scheduler& scheduler, const PresentFilters& filters, bool stereo = false);
     ~BlitScreen();
 
     void DrawToFrame(const Device& device, RasterizerVulkan& rasterizer, Frame* frame,
@@ -79,6 +81,7 @@ private:
     PresentManager& present_manager;
     Scheduler& scheduler;
     const PresentFilters& filters;
+    const bool stereo;
     std::size_t image_count{};
     std::size_t image_index{};
     VkFormat swapchain_view_format{};

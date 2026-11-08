@@ -9,6 +9,7 @@
 #include <array>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
 
 #include <boost/container/static_vector.hpp>
 
@@ -172,9 +173,10 @@ public:
     void ReleaseChannel(s32 channel_id) override;
     std::optional<FramebufferTextureInfo> AccelerateDisplay(const Tegra::FramebufferConfig& config,
                                                             VAddr framebuffer_addr,
-                                                            u32 pixel_stride);
+                                                            u32 pixel_stride, bool stereo);
 
 private:
+    void RecordStereoDepth();
     static constexpr const u64 NEEDS_D24[] = {
         0x01006A800016E000ULL, // SSBU
         0x0100E95004038000ULL, // XC2
@@ -398,6 +400,14 @@ private:
     u32 trace_captures{};
     u32 trace_capture_dropped{};
     u32 trace_failure_details{};
+    struct StereoDepth {
+        VideoCommon::ImageViewId view_id;
+        VkImage image;
+        bool reversed;
+    };
+    std::unordered_map<VkImage, StereoDepth> stereo_depth_targets;
+    const bool stereo_window;
+    bool stereo_depth_reported{};
 };
 
 } // namespace Vulkan

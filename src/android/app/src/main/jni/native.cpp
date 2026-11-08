@@ -281,11 +281,12 @@ void EmulationSession::SetAppletId(int applet_id) {
 
 Core::SystemResultStatus EmulationSession::InitializeEmulation(const std::string& filepath,
                                                                const std::size_t program_index,
-                                                               const bool frontend_initiated) {
+                                                               const bool frontend_initiated,
+                                                               bool stereo) {
     std::scoped_lock lock(m_mutex);
 
     // Create the render window.
-    m_window = std::make_unique<EmuWindow_Android>(m_native_window, m_vulkan_library);
+    m_window = std::make_unique<EmuWindow_Android>(m_native_window, m_vulkan_library, stereo);
 
     // Initialize system.
     jauto android_keyboard = std::make_unique<Common::Android::SoftwareKeyboard::AndroidKeyboard>();
@@ -522,7 +523,7 @@ u64 EmulationSession::GetProgramId(JNIEnv* env, jstring jprogramId) {
 
 static Core::SystemResultStatus RunEmulation(const std::string& filepath,
                                              const size_t program_index,
-                                             const bool frontend_initiated) {
+                                             const bool frontend_initiated, bool stereo) {
     LOG_INFO(Frontend, "starting");
 
     if (filepath.empty()) {
@@ -535,7 +536,7 @@ static Core::SystemResultStatus RunEmulation(const std::string& filepath,
     };
 
     jconst result = EmulationSession::GetInstance().InitializeEmulation(filepath, program_index,
-                                                                        frontend_initiated);
+                                                                        frontend_initiated, stereo);
     if (result != Core::SystemResultStatus::Success) {
         return result;
     }
@@ -1350,11 +1351,11 @@ jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_isSlowMode(JNIEnv *env, jobject j
 
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_run(JNIEnv* env, jobject jobj, jstring j_path,
                                                jint j_program_index,
-                                               jboolean j_frontend_initiated) {
+                                               jboolean j_frontend_initiated, jboolean j_stereo) {
     const std::string path = Common::Android::GetJString(env, j_path);
 
     const Core::SystemResultStatus result{
-        RunEmulation(path, j_program_index, j_frontend_initiated)};
+        RunEmulation(path, j_program_index, j_frontend_initiated, j_stereo == JNI_TRUE)};
     if (result != Core::SystemResultStatus::Success) {
         env->CallStaticVoidMethod(Common::Android::GetNativeLibraryClass(),
                                   Common::Android::GetExitEmulationActivity(),

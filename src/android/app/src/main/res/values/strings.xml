@@ -1002,6 +1002,9 @@
     <string name="emulation_dpad_slide">D-pad slide</string>
     <string name="emulation_haptics">Touch haptics</string>
     <string name="emulation_show_overlay">Show controller</string>
+    <string name="stereo_window">3D window (experimental)</string>
+    <string name="stereo_window_restart">Close and reopen the game to apply the 3D window setting.</string>
+    <string name="stereo_window_unavailable">The 3D window is unavailable. Using the 2D window.</string>
     <string name="emulation_hide_overlay">Hide controller</string>
     <string name="emulation_toggle_all">Toggle all</string>
     <string name="emulation_control_adjust">Adjust overlay</string>
