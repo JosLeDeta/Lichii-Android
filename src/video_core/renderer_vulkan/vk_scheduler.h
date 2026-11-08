@@ -472,13 +472,20 @@ private:
     SubmissionTrace trace_work;
     std::vector<SubmissionTrace> trace_submissions;
     /// EDEN_NX2_HANG_WATCH: pipelines recorded into the last submissions, for a stalled wait.
+    struct HangPipeline {
+        std::array<u64, 6> hashes{};
+        bool compute{};
+
+        bool operator==(const HangPipeline&) const = default;
+    };
     struct HangSubmission {
         u64 tick{};
-        std::vector<std::string> pipelines;
+        std::vector<HangPipeline> pipelines;
+        bool waits_on_semaphore{};
     };
-    void HangRecord(std::string pipeline);
+    void HangRecord(const HangPipeline& pipeline);
     void ReportStall(u64 tick, u64 gpu_tick, u64 next_tick, u64 waited_s);
-    std::vector<std::string> hang_work; ///< Worker thread: the submission being recorded
+    std::vector<HangPipeline> hang_work; ///< Worker thread: the submission being recorded
     std::mutex hang_mutex;
     std::deque<HangSubmission> hang_submissions;
     /// Logs when the GPU tick stops advancing while work is pending, whoever waits for it.
