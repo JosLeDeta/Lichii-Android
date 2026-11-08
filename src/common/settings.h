@@ -590,6 +590,18 @@ struct Values {
                                                       Specialization::Default,
                                                       true,
                                                       true};
+    // Whether upload staging is bounded while a scene loads (SceneMemoryCapEnabled): at most
+    // 256 MiB pooled, waiting for the GPU past it, and large buffers freed every frame. Saves
+    // memory, costs speed in games that stream textures. Auto: Ocarina of Time only.
+    SwitchableSetting<SceneMemoryCap, true> scene_memory_cap{linkage,
+                                                             SceneMemoryCap::Auto,
+                                                             SceneMemoryCap::Auto,
+                                                             SceneMemoryCap::On,
+                                                             "scene_memory_cap",
+                                                             Category::RendererAdvanced,
+                                                             Specialization::Default,
+                                                             true,
+                                                             true};
     // How much of a native (Switch 2) compute program's storage binding a dispatch marks
     // GPU-written. Its pointer carries no size, so the binding is up to 8 MiB; marking all of it
     // defers the CPU's later writes to those pages (Ocarina of Time's white leaves) and has fences
@@ -1089,6 +1101,9 @@ u64 GetCurrentProgramID();
 // Whether the program being loaded is a Switch 2 one (set by the core before the GPU starts).
 void SetCurrentProgramIsSwitch2(bool is_switch2);
 bool CurrentProgramIsSwitch2();
+
+// scene_memory_cap for the running program.
+bool SceneMemoryCapEnabled();
 
 // The ASTC recompression in effect: astc_recompression, unless the renderer picked another one
 // for the running program (the configuration is left as is). The core clears it on load.

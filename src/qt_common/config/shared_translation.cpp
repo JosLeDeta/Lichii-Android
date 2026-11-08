@@ -275,6 +275,12 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
            tr("Lets the CPU start the next frame while the GPU finishes the current one.\nRaises "
               "the frame rate in GPU-heavy games at the cost of one frame of input latency.\nAuto "
               "picks per game."));
+    INSERT(Settings, scene_memory_cap, tr("Limit memory during scene loads:"),
+           tr("Bounds the upload buffers a scene load keeps (256 MB) and frees large ones every "
+              "frame.
+Saves memory, but slows games that stream textures.
+Auto: Ocarina of "
+              "Time only."));
     INSERT(Settings, native_compute_write_mark, tr("Native compute write mark:"),
            tr("How much of a Switch 2 compute shader's storage buffer is treated as written by "
               "the GPU after each dispatch.\nAuto marks what the shader's stores can reach and "
@@ -529,6 +535,12 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                               PAIR(FramesAhead, Auto, tr("Auto")),
                               PAIR(FramesAhead, Off, tr("Off")),
                               PAIR(FramesAhead, On, tr("On")),
+                          }});
+    translations->insert({Settings::EnumMetadata<Settings::SceneMemoryCap>::Index(),
+                          {
+                              PAIR(SceneMemoryCap, Auto, tr("Auto")),
+                              PAIR(SceneMemoryCap, Off, tr("Off")),
+                              PAIR(SceneMemoryCap, On, tr("On")),
                           }});
     translations->insert(
         {Settings::EnumMetadata<Settings::CpuAccuracy>::Index(),
