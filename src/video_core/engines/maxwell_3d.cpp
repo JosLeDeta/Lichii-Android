@@ -1533,10 +1533,11 @@ void Maxwell3D::FrontDmaRead(VideoCommon::GpuSplit& split, FrontState& fs, u32 m
                             },
                             VideoCommon::DrainSite::MacroDmaFlush);
                     }
+                    // Wait for the reports to land, as the drained path below does (#215).
                     split.Run(
-                        [memory = &memory_manager, source, read_bytes] {
-                            memory->FlushRegion(source, read_bytes,
-                                                VideoCommon::CacheType::QueryCache);
+                        [this, source, read_bytes] {
+                            VideoCommon::QueryDma::FlushPending(memory_manager, *rasterizer,
+                                                                source, read_bytes);
                         },
                         VideoCommon::DrainSite::MacroDmaFlush);
                     if (fs.dma_snapshots.size() > 8192) {
