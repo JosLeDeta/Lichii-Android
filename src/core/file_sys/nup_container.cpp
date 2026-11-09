@@ -149,6 +149,42 @@ bool Sha256(const u8* data, std::size_t size, std::array<u8, 0x20>& out) {
     return length == out.size();
 }
 
+void RepairOcarinaGrottoTexture(const VirtualDir& romfs) {
+    constexpr auto damaged_name = "CmnTex_Map_Soil_FairyFountain_Floor_D_Nrm.bntx.zs";
+    constexpr auto replacement_name = "CmnTex_Map_Sand_FairyFountain_Sand_A_Nrm.bntx.zs";
+    constexpr std::size_t damaged_size = 216015;
+    constexpr std::size_t zero_prefix_size = 0x3000;
+    constexpr std::array<u8, 4> zstd_magic{0x28, 0xB5, 0x2F, 0xFD};
+
+    // BuildPackageDir creates a VectorVfsDirectory for every directory in this tree.
+    const auto textures =
+        std::static_pointer_cast<VectorVfsDirectory>(romfs->GetSubdirectory("Tex"));
+    if (!textures) {
+        return;
+    }
+    const auto damaged = textures->GetFile(damaged_name);
+    if (!damaged || damaged->GetSize() != damaged_size) {
+        return;
+    }
+    const auto prefix = damaged->ReadBytes(zero_prefix_size, 0);
+    if (prefix.size() != zero_prefix_size ||
+        !std::ranges::all_of(prefix, [](u8 byte) { return byte == 0; })) {
+        return;
+    }
+
+    const auto replacement = textures->GetFile(replacement_name);
+    if (!replacement || !std::ranges::equal(replacement->ReadBytes(zstd_magic.size(), 0), zstd_magic)) {
+        return;
+    }
+
+    // A damaged normal map makes the game abandon the entire grotto model.
+    auto alias = std::make_shared<OffsetVfsFile>(replacement, replacement->GetSize(), 0, damaged_name);
+    if (textures->DeleteFile(damaged_name)) {
+        textures->AddFile(std::move(alias));
+        LOG_WARNING(Loader, "NUP: using {} in place of damaged {}", replacement_name, damaged_name);
+    }
+}
+
 /// A member file whose extent is zstd-compressed. Decompresses on first read and caches the
 /// result (LRU-evicted); a file over half the cache cap is decompressed once to a temporary file.
 class NupVfsFile final : public VfsFile {
@@ -767,7 +803,13 @@ VirtualDir NupContainer::GetRomFSDir(std::size_t package_index) {
         romfs_dir_cache.resize(packages.size());
     }
     if (romfs_dir_cache[package_index] == nullptr) {
-        romfs_dir_cache[package_index] = BuildPackageDir(packages[package_index].romfs_dir);
+        const auto& package = packages[package_index];
+        auto dir = BuildPackageDir(package.romfs_dir);
+        constexpr u64 OcarinaOfTimeTitleId = 0x0400486024DEC000;
+        if (package.title_id == OcarinaOfTimeTitleId) {
+            RepairOcarinaGrottoTexture(dir);
+        }
+        romfs_dir_cache[package_index] = std::move(dir);
     }
     return romfs_dir_cache[package_index];
 }
