@@ -709,6 +709,16 @@ private:
         return AsyncBufferDownloads() || memory_tracker.IsRegionPreflushable(device_addr, size);
     }
 
+    static constexpr u64 OcarinaOfTime = 0x0400486024DEC000ULL;
+
+    static bool RearmOcarinaPreflushedReads() {
+#ifdef _WIN32
+        return Settings::GetCurrentProgramID() == OcarinaOfTime;
+#else
+        return false;
+#endif
+    }
+
     /// Queues a GPU write for download at the next fence where DownloadsAtFence holds. With only
     /// Preflushable marks, just the marked pages are queued: a write that covers one marked page
     /// of a large buffer would otherwise copy the whole buffer back at every fence.
@@ -724,9 +734,11 @@ private:
         if (!exact) {
             if (memory_tracker.IsRegionPreflushable(device_addr, size)) {
                 uncommitted_gpu_modified_ranges.Add(device_addr, size);
-            } else {
-                ArmReadTraps(device_addr, size);
+                if (!RearmOcarinaPreflushedReads()) {
+                    return;
+                }
             }
+            ArmReadTraps(device_addr, size);
             return;
         }
         const DAddr end = device_addr + size;
@@ -739,7 +751,9 @@ private:
                 queued += upper - lower;
             }
         });
-        if (queued < size) {
+        // A queued download becomes visible only when its fence completes. Invalidate the
+        // CPU's cached read area as well so an early read can flush the new data on demand.
+        if (queued < size || RearmOcarinaPreflushedReads()) {
             ArmReadTraps(device_addr, size);
         }
         if (Nx2DownloadTrace::g_enabled && queued != 0) [[unlikely]] {

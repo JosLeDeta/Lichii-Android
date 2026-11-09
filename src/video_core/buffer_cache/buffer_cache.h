@@ -295,6 +295,9 @@ std::optional<VideoCore::RasterizerDownloadArea> BufferCache<P>::GetFlushArea(DA
     DAddr device_addr_end_aligned = Common::AlignUp(device_addr + size, Core::DEVICE_PAGESIZE);
     area->start_address = device_addr_start_aligned;
     area->end_address = device_addr_end_aligned;
+    if (RearmOcarinaPreflushedReads()) {
+        ForgetReadTraps(device_addr, size);
+    }
     if (memory_tracker.IsRegionPreflushable(device_addr, size)) {
         // A preflushed region's data reaches guest memory when its fence pops (PopAsyncBuffers
         // clears gpu_modified_ranges then). A read before that saw stale words (Ocarina of Time's
@@ -311,7 +314,6 @@ std::optional<VideoCore::RasterizerDownloadArea> BufferCache<P>::GetFlushArea(DA
     // writes and reads of a few GPU-written pages faulted ~500 times a second on a phone, each
     // waiting for the host GPU; with their writes copied back at fences most faults find the data
     // already in guest memory (TryCacheInvalidation) and wait for nothing.
-    static constexpr u64 OcarinaOfTime = 0x0400486024DEC000ULL;
     const bool preflush = !Tegra::g_nx2_ampere.load(std::memory_order_relaxed) ||
                           Settings::GetCurrentProgramID() == OcarinaOfTime;
     if (!area->preemtive) {
